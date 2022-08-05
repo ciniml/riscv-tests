@@ -41,7 +41,7 @@ MSTATUS64_SD = 0x8000000000000000
 
 def ihex_line(address, record_type, data):
     assert len(data) < 128
-    line = ":%02X%04X%02X" % (len(data), address, record_type)
+    line = f":{len(data):02X}{address:04X}{record_type:02X}"
     check = len(data)
     check += address % 256
     check += address >> 8
@@ -49,8 +49,8 @@ def ihex_line(address, record_type, data):
     for char in data:
         value = ord(char)
         check += value
-        line += "%02X" % value
-    line += "%02X\n" % ((256-check)%256)
+        line += f"{value:02X}"
+    line += f"{(256 - check) % 256:02X}\n"
     return line
 
 def srec_parse(line):
@@ -66,17 +66,17 @@ def srec_parse(line):
         # Any higher bits were chopped off.
         address = int(line[4:12], 16)
         for i in range(6, count+1):
-            data += "%c" % int(line[2*i:2*i+2], 16)
+            data += f"{int(line[2 * i:2 * i + 2], 16):c}"
         # Ignore the checksum.
         return 3, address, data
     elif typ == b'S7':
         # ignore execution start field
         return 7, 0, 0
     else:
-        raise TestFailed("Unsupported SREC type %r." % typ)
+        raise TestFailed(f"Unsupported SREC type {typ!r}.")
 
 def readable_binary_string(s):
-    return "".join("%02x" % ord(c) for c in s)
+    return "".join(f"{ord(c):02x}" for c in s)
 
 class InfoTest(GdbTest):
     def test(self):
@@ -99,16 +99,16 @@ class SimpleRegisterTest(GdbTest):
     def check_reg(self, name, alias):
         a = random.randrange(1<<self.hart.xlen)
         b = random.randrange(1<<self.hart.xlen)
-        self.gdb.p("$%s=0x%x" % (name, a))
-        assertEqual(self.gdb.p("$%s" % alias), a)
+        self.gdb.p(f"${name}=0x{a:x}")
+        assertEqual(self.gdb.p(f"${alias}"), a)
         self.gdb.stepi()
-        assertEqual(self.gdb.p("$%s" % name), a)
-        assertEqual(self.gdb.p("$%s" % alias), a)
-        self.gdb.p("$%s=0x%x" % (alias, b))
-        assertEqual(self.gdb.p("$%s" % name), b)
+        assertEqual(self.gdb.p(f"${name}"), a)
+        assertEqual(self.gdb.p(f"${alias}"), a)
+        self.gdb.p(f"${alias}=0x{b:x}")
+        assertEqual(self.gdb.p(f"${name}"), b)
         self.gdb.stepi()
-        assertEqual(self.gdb.p("$%s" % name), b)
-        assertEqual(self.gdb.p("$%s" % alias), b)
+        assertEqual(self.gdb.p(f"${name}"), b)
+        assertEqual(self.gdb.p(f"${alias}"), b)
 
     def setup(self):
         self.write_nop_program(5)
@@ -140,11 +140,11 @@ class SimpleV13Test(SimpleRegisterTest):
                 written[name] = {}
                 for i in range(vlenb // byte_count):
                     written[name][i] = random.randrange(256 ** byte_count)
-                    self.gdb.p("$v13.%s[%d]=0x%x" % (name, i, written[name][i]))
+                    self.gdb.p(f"$v13.{name}[{i}]=0x{written[name][i]:x}")
                 self.gdb.stepi()
                 self.gdb.p("$v13")
                 for i in range(vlenb // byte_count):
-                    assertEqual(self.gdb.p("$v13.%s[%d]" % (name, i)),
+                    assertEqual(self.gdb.p(f"$v13.{name}[{i}]"),
                             written[name][i])
         else:
             output = self.gdb.p_raw("$v13")
@@ -154,22 +154,22 @@ class SimpleF18Test(SimpleRegisterTest):
     def check_reg(self, name, alias):
         if self.hart.extensionSupported('F'):
             mstatus_fs = 0x00006000
-            self.gdb.p("$mstatus=$mstatus|0x%x" % mstatus_fs)
+            self.gdb.p(f"$mstatus=$mstatus|0x{mstatus_fs:x}")
             self.gdb.stepi()
             a = random.random()
             b = random.random()
-            self.gdb.p_fpr("$%s=%f" % (name, a))
-            assertLess(abs((self.gdb.p_fpr("$%s" % alias)) - a), .001)
+            self.gdb.p_fpr(f"${name}={a:f}")
+            assertLess(abs((self.gdb.p_fpr(f"${alias}")) - a), .001)
             self.gdb.stepi()
-            assertLess(abs((self.gdb.p_fpr("$%s" % name)) - a), .001)
-            assertLess(abs((self.gdb.p_fpr("$%s" % alias)) - a), .001)
-            self.gdb.p_fpr("$%s=%f" % (alias, b))
-            assertLess(abs((self.gdb.p_fpr("$%s" % name)) - b), .001)
+            assertLess(abs((self.gdb.p_fpr(f"${name}")) - a), .001)
+            assertLess(abs((self.gdb.p_fpr(f"${alias}")) - a), .001)
+            self.gdb.p_fpr(f"${alias}={b:f}")
+            assertLess(abs((self.gdb.p_fpr(f"${name}")) - b), .001)
             self.gdb.stepi()
-            assertLess(abs((self.gdb.p_fpr("$%s" % name)) - b), .001)
-            assertLess(abs((self.gdb.p_fpr("$%s" % alias)) - b), .001)
+            assertLess(abs((self.gdb.p_fpr(f"${name}")) - b), .001)
+            assertLess(abs((self.gdb.p_fpr(f"${alias}")) - b), .001)
 
-            size = self.gdb.p("sizeof($%s)" % name)
+            size = self.gdb.p(f"sizeof(${name})")
             if self.hart.extensionSupported('D'):
                 assertEqual(size, 8)
             else:
@@ -209,7 +209,7 @@ class CustomRegisterTest(SimpleRegisterTest):
 
         # Now test writing
         magic = 6667
-        self.gdb.p("$custom12345=%d" % (12345 + magic))
+        self.gdb.p(f"$custom12345={12345 + magic}")
         self.gdb.stepi()
 
         self.check_custom(magic)
@@ -229,15 +229,15 @@ class SimpleNoExistTest(GdbTest):
 
 class SimpleMemoryTest(GdbTest):
     def access_test(self, size, data_type):
-        assertEqual(self.gdb.p("sizeof(%s)" % data_type), size)
+        assertEqual(self.gdb.p(f"sizeof({data_type})"), size)
         a = 0x86753095555aaaa & ((1<<(size*8))-1)
         b = 0xdeadbeef12345678 & ((1<<(size*8))-1)
         addrA = self.hart.ram
         addrB = self.hart.ram + self.hart.ram_size - size
-        self.gdb.p("*((%s*)0x%x) = 0x%x" % (data_type, addrA, a))
-        self.gdb.p("*((%s*)0x%x) = 0x%x" % (data_type, addrB, b))
-        assertEqual(self.gdb.p("*((%s*)0x%x)" % (data_type, addrA)), a)
-        assertEqual(self.gdb.p("*((%s*)0x%x)" % (data_type, addrB)), b)
+        self.gdb.p(f"*(({data_type}*)0x{addrA:x}) = 0x{a:x}")
+        self.gdb.p(f"*(({data_type}*)0x{addrB:x}) = 0x{b:x}")
+        assertEqual(self.gdb.p(f"*(({data_type}*)0x{addrA:x})"), a)
+        assertEqual(self.gdb.p(f"*(({data_type}*)0x{addrB:x})"), b)
 
 class MemTest8(SimpleMemoryTest):
     def test(self):
@@ -262,16 +262,16 @@ class MemTestReadInvalid(SimpleMemoryTest):
 
         self.write_nop_program(2)
         self.gdb.p("$s0=0x12345678")
-        self.gdb.p("*((int*)0x%x)=0xabcdef" % good_address)
+        self.gdb.p(f"*((int*)0x{good_address:x})=0xabcdef")
         # This test relies on 'gdb_report_data_abort enable' being executed in
         # the openocd.cfg file.
         try:
-            self.gdb.p("*((int*)0x%x)" % bad_address)
+            self.gdb.p(f"*((int*)0x{bad_address:x})")
             assert False, "Read should have failed."
         except testlib.CannotAccess as e:
             assertEqual(e.address, bad_address)
         self.gdb.stepi()    # Don't let gdb cache register read
-        assertEqual(self.gdb.p("*((int*)0x%x)" % good_address), 0xabcdef)
+        assertEqual(self.gdb.p(f"*((int*)0x{good_address:x})"), 0xabcdef)
         assertEqual(self.gdb.p("$s0"), 0x12345678)
 
 #class MemTestWriteInvalid(SimpleMemoryTest):
@@ -293,8 +293,8 @@ class MemTestBlockReadInvalid(GdbTest):
         return self.target.invalid_memory_returns_zero
 
     def test(self):
-        self.gdb.p("*((int*)0x%x) = 0xdeadbeef" % (self.hart.ram + 0))
-        self.gdb.p("*((int*)0x%x) = 0x12345678" % (self.hart.ram + 4))
+        self.gdb.p(f"*((int*)0x{self.hart.ram + 0:x}) = 0xdeadbeef")
+        self.gdb.p(f"*((int*)0x{self.hart.ram + 4:x}) = 0x12345678")
 
         # read before start of memory
         self.memory_test(self.hart.ram - 8,
@@ -311,10 +311,10 @@ class MemTestBlockReadInvalid(GdbTest):
                          self.hart.ram + 8,
                          self.real_values)
 
-        self.gdb.p("*((int*)0x%x) = 0xdeadbeef" %
-                (self.hart.ram + self.hart.ram_size - 8))
-        self.gdb.p("*((int*)0x%x) = 0x12345678" %
-                (self.hart.ram + self.hart.ram_size - 4))
+        self.gdb.p(f"*((int*)0x{self.hart.ram + self.hart.ram_size - 8:x}) = "
+                   "0xdeadbeef")
+        self.gdb.p(f"*((int*)0x{self.hart.ram + self.hart.ram_size - 4:x}) = "
+                   "0x12345678")
 
         # read before end of memory
         self.memory_test(self.hart.ram + self.hart.ram_size - 8,
@@ -332,12 +332,12 @@ class MemTestBlockReadInvalid(GdbTest):
                          self.zero_values)
 
     def memory_test(self, start_addr, end_addr, expected_values):
-        dump = tempfile.NamedTemporaryFile(suffix=".simdata")
-        self.gdb.command("dump verilog memory %s 0x%x 0x%x" %
-                (dump.name, start_addr, end_addr))
-        self.gdb.command("shell cat %s" % dump.name)
-        line = dump.readline()
-        line = dump.readline()
+        with tempfile.NamedTemporaryFile(suffix=".simdata") as dump:
+            self.gdb.command(f"dump verilog memory {dump.name} "
+                             f"0x{start_addr:x} 0x{end_addr:x}")
+            self.gdb.command(f"shell cat {dump.name}")
+            line = dump.readline()
+            line = dump.readline()
         assertEqual(line.strip(), expected_values)
 
 class MemTestBlock(GdbTest):
@@ -347,7 +347,7 @@ class MemTestBlock(GdbTest):
     def write(self, temporary_file):
         data = ""
         for i in range(self.length // self.line_length):
-            line_data = "".join(["%c" % random.randrange(256)
+            line_data = "".join([f"{random.randrange(256):c}"
                 for _ in range(self.line_length)])
             data += line_data
             temporary_file.write(ihex_line(i * self.line_length, 0,
@@ -358,7 +358,7 @@ class MemTestBlock(GdbTest):
     def spot_check_memory(self, data):
         increment = 19 * 4
         for offset in list(range(0, self.length, increment)) + [self.length-4]:
-            value = self.gdb.p("*((int*)0x%x)" % (self.hart.ram + offset))
+            value = self.gdb.p(f"*((int*)0x{self.hart.ram + offset:x})")
             written = ord(data[offset]) | \
                     (ord(data[offset+1]) << 8) | \
                     (ord(data[offset+2]) << 16) | \
@@ -366,33 +366,33 @@ class MemTestBlock(GdbTest):
             assertEqual(value, written)
 
     def test_block(self, extra_delay):
-        a = tempfile.NamedTemporaryFile(suffix=".ihex")
-        data = self.write(a)
+        with tempfile.NamedTemporaryFile(suffix=".ihex") as a:
+            data = self.write(a)
 
-        self.gdb.command("shell cat %s" % a.name)
-        self.gdb.command("restore %s 0x%x" % (a.name, self.hart.ram),
-                reset_delays=50 + extra_delay)
+            self.gdb.command(f"shell cat {a.name}")
+            self.gdb.command(f"restore {a.name} 0x{self.hart.ram:x}",
+                    reset_delays=50 + extra_delay)
         self.spot_check_memory(data)
 
-        b = tempfile.NamedTemporaryFile(suffix=".srec")
-        self.gdb.command("dump srec memory %s 0x%x 0x%x" % (b.name,
-            self.hart.ram, self.hart.ram + self.length), ops=self.length / 32,
-            reset_delays=100 + extra_delay)
-        self.gdb.command("shell cat %s" % b.name)
-        highest_seen = 0
-        for line in b:
-            record_type, address, line_data = srec_parse(line)
-            if record_type == 3:
-                offset = address - (self.hart.ram & 0xffffffff)
-                written_data = data[offset:offset+len(line_data)]
-                highest_seen += len(line_data)
-                if line_data != written_data:
-                    raise TestFailed(
-                            "Data mismatch at 0x%x (offset 0x%x); wrote %s but "
-                            "read %s" % (
-                                self.hart.ram + offset, offset,
-                                readable_binary_string(written_data),
-                                readable_binary_string(line_data)))
+        with tempfile.NamedTemporaryFile(suffix=".srec") as b:
+            self.gdb.command(f"dump srec memory {b.name} 0x{self.hart.ram:x} "
+                             f"0x{self.hart.ram + self.length:x}",
+                             ops=self.length / 32,
+                             reset_delays=100 + extra_delay)
+            self.gdb.command(f"shell cat {b.name}")
+            highest_seen = 0
+            for line in b:
+                record_type, address, line_data = srec_parse(line)
+                if record_type == 3:
+                    offset = address - (self.hart.ram & 0xffffffff)
+                    written_data = data[offset:offset+len(line_data)]
+                    highest_seen += len(line_data)
+                    if line_data != written_data:
+                        raise TestFailed(
+                            f"Data mismatch at 0x{self.hart.ram + offset:x} "
+                            f"(offset 0x{offset:x}); "
+                            f"wrote {readable_binary_string(written_data)} but "
+                            f"read {readable_binary_string(line_data)}")
         assertEqual(highest_seen, self.length)
 
 # Run memory block tests with different reset delays, so hopefully we hit busy
@@ -408,6 +408,22 @@ class MemTestBlock1(MemTestBlock):
 class MemTestBlock2(MemTestBlock):
     def test(self):
         return self.test_block(2)
+
+class DisconnectTest(GdbTest):
+    def test(self):
+        old_values = self.gdb.info_registers("all", ops=20)
+        self.gdb.disconnect()
+        self.gdb.connect()
+        self.gdb.select_hart(self.hart)
+        new_values = self.gdb.info_registers("all", ops=20)
+
+        regnames = set(old_values.keys()).union(set(new_values.keys()))
+        for regname in regnames:
+            if regname in ("mcycle", "minstret", "instret", "cycle", "mip",
+                    "time"):
+                continue
+            assertEqual(old_values[regname], new_values[regname],
+                    f"Register {regname} didn't match")
 
 class InstantHaltTest(GdbTest):
     def test(self):
@@ -432,10 +448,10 @@ class InstantChangePc(GdbTest):
         # 0x13 is nop
         self.gdb.command("monitor reset halt")
         self.gdb.command("flushregs")
-        self.gdb.command("p *((int*) 0x%x)=0x13" % self.hart.ram)
-        self.gdb.command("p *((int*) 0x%x)=0x13" % (self.hart.ram + 4))
-        self.gdb.command("p *((int*) 0x%x)=0x13" % (self.hart.ram + 8))
-        self.gdb.p("$pc=0x%x" % self.hart.ram)
+        self.gdb.command(f"p *((int*) 0x{self.hart.ram:x})=0x13")
+        self.gdb.command(f"p *((int*) 0x{self.hart.ram + 4:x})=0x13")
+        self.gdb.command(f"p *((int*) 0x{self.hart.ram + 8:x})=0x13")
+        self.gdb.p(f"$pc=0x{self.hart.ram:x}")
         self.gdb.stepi()
         assertEqual((self.hart.ram + 4), self.gdb.p("$pc"))
         self.gdb.stepi()
@@ -464,7 +480,7 @@ class ProgramHwWatchpoint(ProgramTest):
         output = self.gdb.c()
         assertIn("Breakpoint", output)
         assertIn("main", output)
-        self.gdb.command("delete %d" % mainbp)
+        self.gdb.command(f"delete {mainbp}")
         self.gdb.watch("counter == 5")
         # Watchpoint hits when counter becomes 5.
         output = self.gdb.c()
@@ -541,7 +557,7 @@ class DebugChangeString(DebugTest):
         text = "This little piggy went to the market."
         self.gdb.b("main:start")
         self.gdb.c()
-        self.gdb.p('fox = "%s"' % text)
+        self.gdb.p(f'fox = "{text}"')
         self.exit(0x43b497b8)
 
 class DebugTurbostep(DebugTest):
@@ -553,7 +569,9 @@ class DebugTurbostep(DebugTest):
         last_pc = None
         advances = 0
         jumps = 0
-        for _ in range(10):
+        start = time.time()
+        count = 10
+        for _ in range(count):
             self.gdb.stepi()
             pc = self.gdb.p("$pc")
             assertNotEqual(last_pc, pc)
@@ -562,6 +580,8 @@ class DebugTurbostep(DebugTest):
             else:
                 jumps += 1
             last_pc = pc
+        end = time.time()
+        print(f"{(end - start) / count:.2f} seconds/step")
         # Some basic sanity that we're not running between breakpoints or
         # something.
         assertGreater(jumps, 1)
@@ -576,11 +596,11 @@ class DebugSymbols(DebugTest):
         bp = self.gdb.b("main")
         output = self.gdb.c()
         assertIn(", main ", output)
-        self.gdb.command("delete %d" % bp)
+        self.gdb.command(f"delete {bp}")
         bp = self.gdb.b("rot13")
         output = self.gdb.c()
         assertIn(", rot13 ", output)
-        self.gdb.command("delete %d" % bp)
+        self.gdb.command(f"delete {bp}")
 
 class DebugBreakpoint(DebugTest):
     def test(self):
@@ -677,11 +697,11 @@ class HwbpManual(DebugTest):
 
         tselect = 0
         while True:
-            self.gdb.p("$tselect=%d" % tselect)
+            self.gdb.p(f"$tselect={tselect}")
             value = self.gdb.p("$tselect")
             if value != tselect:
                 raise TestNotApplicable
-            self.gdb.p("$tdata1=0x%x" % tdata1)
+            self.gdb.p(f"$tdata1=0x{tdata1:x}")
             value = self.gdb.p("$tselect")
             if value == tdata1:
                 break
@@ -720,7 +740,7 @@ class Hwbp2(DebugTest):
             output = self.gdb.c()
             self.gdb.p("$pc")
             assertRegex(output, r"[bB]reakpoint")
-            assertIn("%s " % expected, output)
+            assertIn(f"{expected} ", output)
         self.gdb.command("delete")
         self.gdb.b("_exit")
         self.exit()
@@ -728,7 +748,7 @@ class Hwbp2(DebugTest):
 class TooManyHwbp(DebugTest):
     def test(self):
         for i in range(30):
-            self.gdb.hbreak("*rot13 + %d" % (i * 4))
+            self.gdb.hbreak(f"*rot13 + {i * 4}")
 
         output = self.gdb.c(checkOutput=False)
         assertIn("Cannot insert hardware breakpoint", output)
@@ -815,6 +835,7 @@ class MemorySampleTest(DebugTest):
                 else:
                     end = (timestamp, total_samples)
             else:
+                assertRegex(line, r"^0x[0-f]+: 0x[0-f]+$")
                 address, value = line.split(': ')
                 address = int(address, 16)
                 if address == check_addr:
@@ -826,8 +847,8 @@ class MemorySampleTest(DebugTest):
                     previous_value = value
                 total_samples += 1
         if end and total_samples > 0:
-            print("%d samples/second" % (1000 * end[1] / (end[0] -
-                first_timestamp)))
+            samples_per_second = 1000 * end[1] / (end[0] - first_timestamp)
+            print(f"{samples_per_second} samples/second")
         else:
             raise Exception("No samples collected.")
 
@@ -855,8 +876,7 @@ class MemorySampleSingle(MemorySampleTest):
     def test(self):
         addr = self.gdb.p("&j")
         sizeof_j = self.gdb.p("sizeof(j)")
-        self.gdb.command("monitor riscv memory_sample 0 0x%x %d" % (
-                addr, sizeof_j))
+        self.gdb.command(f"monitor riscv memory_sample 0 0x{addr:x} {sizeof_j}")
 
         raw_samples = self.collect_samples()
         self.check_incrementing_samples(raw_samples, addr)
@@ -868,17 +888,22 @@ class MemorySampleSingle(MemorySampleTest):
 class MemorySampleMixed(MemorySampleTest):
     def test(self):
         addr = {}
-        for i, name in enumerate(("j", "i32", "i64")):
-            addr[name] = self.gdb.p("&%s" % name)
-            sizeof = self.gdb.p("sizeof(%s)" % name)
-            self.gdb.command("monitor riscv memory_sample %d 0x%x %d" % (
-                    i, addr[name], sizeof))
+        test_vars = ["j", "i32"]
+        if self.hart.xlen >= 64:
+            test_vars.append("i64")
+        for i, name in enumerate(test_vars):
+            addr[name] = self.gdb.p(f"&{name}")
+            sizeof = self.gdb.p(f"sizeof({name})")
+            self.gdb.command(f"monitor riscv memory_sample {i} "
+                             f"0x{addr[name]:x} {sizeof}")
 
         raw_samples = self.collect_samples()
         self.check_incrementing_samples(raw_samples, addr["j"],
                                         tolerance=0x400000)
         self.check_samples_equal(raw_samples, addr["i32"], 0xdeadbeef)
-        self.check_samples_equal(raw_samples, addr["i64"], 0x1122334455667788)
+        if self.hart.xlen >= 64:
+            self.check_samples_equal(raw_samples, addr["i64"],
+                                     0x1122334455667788)
 
 class RepeatReadTest(DebugTest):
     def early_applicable(self):
@@ -889,8 +914,8 @@ class RepeatReadTest(DebugTest):
         self.gdb.c()
         mtime_addr = 0x02000000 + 0xbff8
         count = 1024
-        output = self.gdb.command("monitor riscv repeat_read %d 0x%x 4" %
-                (count, mtime_addr))
+        output = self.gdb.command(
+            f"monitor riscv repeat_read {count} 0x{mtime_addr:x} 4")
         values = []
         for line in output.splitlines():
             # Ignore warnings
@@ -910,8 +935,8 @@ class RepeatReadTest(DebugTest):
                 assertGreater(values[i], values[i-1])
                 assertLess(values[i], values[i-1] + slop)
 
-        output = self.gdb.command("monitor riscv repeat_read 0 0x%x 4" %
-                mtime_addr)
+        output = self.gdb.command(
+            f"monitor riscv repeat_read 0 0x{mtime_addr:x} 4")
         assertEqual(output, "")
 
 class Semihosting(GdbSingleHartTest):
@@ -932,18 +957,53 @@ class Semihosting(GdbSingleHartTest):
         assertIn("Breakpoint", output)
         assertIn("_exit", output)
         assertEqual(self.gdb.p("status"), expected_result)
+        return output
 
     def test(self):
-        """Sending gdb ^C while the program is running should cause it to
-        halt."""
-        temp = tempfile.NamedTemporaryFile(suffix=".data")
+        with tempfile.NamedTemporaryFile(suffix=".data") as temp:
+            self.gdb.b("main:begin")
+            self.gdb.c()
+            self.gdb.p(f'filename="{temp.name}"', ops=3)
+            self.exit()
 
-        self.gdb.b("main:begin")
-        self.gdb.c()
-        self.gdb.p('filename="%s"' % temp.name, ops=3)
-        self.exit()
+            with open(temp.name, "r", encoding='utf-8') as fd:
+                contents = fd.readlines()
 
-        contents = open(temp.name, "r").readlines()
+        assertIn("Hello, world!\n", contents)
+
+        # stdout should end up in the OpenOCD log
+        with open(self.server.logname, "r", encoding='utf-8') as fd:
+            log = fd.read()
+        assertIn("Do re mi fa so la ti do!", log)
+
+class SemihostingFileio(Semihosting):
+    def early_applicable(self):
+        # Semihosting file i/o doesn't work right when there are multiple harts
+        # in SMP mode, and the semihosting call comes from a hart other than the
+        # first one.
+        # The problem is that semihosting_common_fileio_info() is called only
+        # for the first target in an SMP list. Either the caller needs to be
+        # made aware of SMP targets, or that function needs to walk the list
+        # itself. (Or maybe we need to make a separate function just for RISC-V
+        # that does that.)
+        return len(self.target.harts) == 1
+
+    def setup(self):
+        self.gdb.command("monitor foreach t [target names] { "
+            "targets $t; arm semihosting_fileio enable }")
+        super().setup()
+
+    def test(self):
+        with tempfile.NamedTemporaryFile(suffix=".data") as temp:
+            self.gdb.b("main:begin")
+            self.gdb.c()
+            self.gdb.p(f'filename="{temp.name}"', ops=3)
+            output = self.exit()
+            # stdout should end up in gdb's CLI
+            assertIn("Do re mi fa so la ti do!", output)
+
+            with open(temp.name, "r", encoding='utf-8') as fd:
+                contents = fd.readlines()
         assertIn("Hello, world!\n", contents)
 
 class InterruptTest(GdbSingleHartTest):
@@ -1027,7 +1087,7 @@ class MulticoreRegTest(GdbTest):
             assertNotIn((hart.system, hart_id), hart_ids)
             hart_ids.add((hart.system, hart_id))
             for n in range(2, 32):
-                value = self.gdb.p("$x%d" % n)
+                value = self.gdb.p(f"$x{n}")
                 assertEqual(value, (hart_id << 8) + n - 1)
 
         # Confirmed that we read different register values for different harts.
@@ -1035,7 +1095,7 @@ class MulticoreRegTest(GdbTest):
 
         for hart in self.target.harts:
             self.gdb.select_hart(hart)
-            self.gdb.p("$x1=0x%x" % (hart.index * 0x1000))
+            self.gdb.p(f"$x1=0x{hart.index * 4096:x}")
             self.gdb.p("$pc=main_post_csrr")
             self.gdb.c()
         for hart in self.target.harts:
@@ -1043,7 +1103,7 @@ class MulticoreRegTest(GdbTest):
             assertIn("main", self.gdb.where())
             # Check register values.
             for n in range(1, 32):
-                value = self.gdb.p("$x%d" % n)
+                value = self.gdb.p(f"$x{n}")
                 assertEqual(value, hart.index * 0x1000 + n - 1)
 
 #class MulticoreRunHaltStepiTest(GdbTest):
@@ -1227,7 +1287,7 @@ class StepTest(GdbSingleHartTest):
         for expected in sequence:
             self.gdb.stepi()
             pc = self.gdb.p("$pc")
-            assertEqual("%x" % (pc - main_address), "%x" % expected)
+            assertEqual(f"{pc - main_address:x}", f"{expected:x}")
 
 class JumpHbreak(GdbSingleHartTest):
     """'jump' resumes execution at location. Execution stops again immediately
@@ -1272,7 +1332,7 @@ class TriggerExecuteInstant(TriggerTest):
     debug mode."""
     def test(self):
         main_address = self.gdb.p("$pc")
-        self.gdb.command("hbreak *0x%x" % (main_address + 4))
+        self.gdb.command(f"hbreak *0x{main_address + 4:x}")
         self.gdb.c()
         assertEqual(self.gdb.p("$pc"), main_address+4)
 
@@ -1295,7 +1355,7 @@ class TriggerLoadAddressInstant(TriggerTest):
         read_loop = self.gdb.p("&read_loop")
         read_again = self.gdb.p("&read_again")
         data = self.gdb.p("&data")
-        self.gdb.command("rwatch *0x%x" % data)
+        self.gdb.command(f"rwatch *0x{data:x}")
         self.gdb.c()
         # Accept hitting the breakpoint before or after the load instruction.
         assertIn(self.gdb.p("$pc"), [read_loop, read_loop + 4])
@@ -1323,7 +1383,7 @@ class TriggerStoreAddressInstant(TriggerTest):
         self.gdb.c()
         write_loop = self.gdb.p("&write_loop")
         data = self.gdb.p("&data")
-        self.gdb.command("watch *0x%x" % data)
+        self.gdb.command(f"watch *0x{data:x}")
         self.gdb.c()
 
         # Accept hitting the breakpoint before or after the store instruction.
@@ -1350,10 +1410,10 @@ class TriggerDmode(TriggerTest):
         dmode_count = 0
         i = 0
         for i in range(16):
-            tdata1 = self.gdb.p("((%s *)&data)[%d]" % (xlen_type, 2*i))
+            tdata1 = self.gdb.p(f"(({xlen_type} *)&data)[{2*i}]")
             if tdata1 == 0:
                 break
-            tdata2 = self.gdb.p("((%s *)&data)[%d]" % (xlen_type, 2*i+1))
+            tdata2 = self.gdb.p(f"(({xlen_type} *)&data)[{2*i+1}]")
 
             if tdata1 & dmode:
                 dmode_count += 1
@@ -1391,19 +1451,19 @@ class RegsTest(GdbSingleHartTest):
         output = self.gdb.c()
         assertIn("Breakpoint ", output)
         assertIn("main", output)
-        self.gdb.command("delete %d" % main_bp)
+        self.gdb.command(f"delete {main_bp}")
         self.gdb.b("handle_trap")
 
 class WriteGprs(RegsTest):
     def test(self):
         if self.hart.extensionSupported('E'):
-            regs = [("x%d" % n) for n in range(2, 16)]
+            regs = [(f"x{n}") for n in range(2, 16)]
         else:
-            regs = [("x%d" % n) for n in range(2, 32)]
+            regs = [(f"x{n}") for n in range(2, 32)]
 
         self.gdb.p("$pc=write_regs")
         for i, r in enumerate(regs):
-            self.gdb.p("$%s=%d" % (r, (0xdeadbeef<<i)+17))
+            self.gdb.p(f"${r}={(0xdeadbeef<<i)+17}")
         self.gdb.p("$x1=&data")
         self.gdb.command("b all_done")
         output = self.gdb.c()
@@ -1413,7 +1473,7 @@ class WriteGprs(RegsTest):
         self.gdb.command("x/30gx &data")
         self.gdb.command("info registers")
         for n in range(len(regs)):
-            assertEqual(self.gdb.x("(char*)(&data)+%d" % (8*n), 'g'),
+            assertEqual(self.gdb.x(f"(char*)(&data)+{8*n}", 'g'),
                     ((0xdeadbeef<<n)+17) & ((1<<self.hart.xlen)-1))
 
 class WriteCsrs(RegsTest):
@@ -1444,21 +1504,22 @@ class DownloadTest(GdbTest):
         # TODO: remove the next line so we get a bit more code to download. The
         # line above that allows for more data runs into some error I don't
         # have time to track down right now.
-        length = min(2**14, max(2**10, self.hart.ram_size - 2048))
+        #length = min(2**14, max(2**10, self.hart.ram_size - 2048))
+        # pylint: disable-next=consider-using-with
         self.download_c = tempfile.NamedTemporaryFile(prefix="download_",
                 suffix=".c", delete=False)
         self.download_c.write(b"#include <stdint.h>\n")
         self.download_c.write(
                 b"unsigned int crc32a(uint8_t *message, unsigned int size);\n")
-        self.download_c.write(b"uint32_t length = %d;\n" % length)
-        self.download_c.write(b"uint8_t d[%d] = {\n" % length)
+        self.download_c.write(b"const uint32_t length = %d;\n" % length)
+        self.download_c.write(b"const uint8_t d[%d] = {\n" % length)
         self.crc = 0
         assert length % 16 == 0
         for i in range(length // 16):
-            self.download_c.write(("  /* 0x%04x */ " % (i * 16)).encode())
+            self.download_c.write(f"  /* 0x{i * 16:04x} */ ".encode())
             for _ in range(16):
                 value = random.randrange(1<<8)
-                self.download_c.write(("0x%02x, " % value).encode())
+                self.download_c.write(f"0x{value:02x}, ".encode())
                 self.crc = binascii.crc32(struct.pack("B", value), self.crc)
             self.download_c.write(b"\n")
         self.download_c.write(b"};\n")
@@ -1477,7 +1538,7 @@ class DownloadTest(GdbTest):
                 compiled[key] = self.target.compile(hart, self.download_c.name,
                         "programs/checksum.c")
             self.gdb.select_hart(hart)
-            self.gdb.command("file %s" % compiled.get(key))
+            self.gdb.command(f"file {compiled.get(key)}")
 
         self.gdb.select_hart(self.hart)
 
@@ -1534,7 +1595,7 @@ class PrivRw(PrivTest):
         """Test reading/writing priv."""
         self.write_nop_program(4)
         for privilege in range(4):
-            self.gdb.p("$priv=%d" % privilege)
+            self.gdb.p(f"$priv={privilege}")
             self.gdb.stepi()
             actual = self.gdb.p("$priv")
             assertIn(actual, self.supported)
@@ -1555,7 +1616,7 @@ class PrivChange(PrivTest):
         self.gdb.p("$priv=3")
         main_address = self.gdb.p("$pc")
         self.gdb.stepi()
-        assertEqual("%x" % self.gdb.p("$pc"), "%x" % (main_address+4))
+        assertEqual(f"{self.gdb.p('$pc'):x}", f"{main_address + 4:x}")
 
         # User mode
         self.gdb.p("$priv=0")
@@ -1572,14 +1633,13 @@ class CheckMisa(GdbTest):
             misa = self.gdb.p("$misa")
             assertEqual(misa, hart.misa)
 
-class TranslateTest(GdbTest):
+class TranslateTest(GdbSingleHartTest):
     compile_args = ("programs/translate.c", )
 
     def setup(self):
         self.disable_pmp()
 
         self.gdb.load()
-        self.parkOtherHarts()
         self.gdb.b("main")
         output = self.gdb.c()
         assertRegex(output, r"\bmain\b")
@@ -1590,9 +1650,9 @@ class TranslateTest(GdbTest):
         else:
             satp = mode << 60
         try:
-            self.gdb.p("$satp=0x%x" % satp)
-        except testlib.CouldNotFetch:
-            raise TestNotApplicable
+            self.gdb.p(f"$satp=0x{satp:x}")
+        except testlib.CouldNotFetch as cnf:
+            raise TestNotApplicable from cnf
         readback = self.gdb.p("$satp")
         self.gdb.p("$satp=0")
         if readback != satp:
@@ -1602,6 +1662,7 @@ class TranslateTest(GdbTest):
         self.gdb.b("error")
         self.gdb.b("handle_trap")
         self.gdb.b("main:active")
+
         output = self.gdb.c()
         assertRegex(output, r"\bmain\b")
         assertEqual(0xdeadbeef, self.gdb.p("physical[0]"))
@@ -1681,10 +1742,10 @@ class VectorTest(GdbSingleHartTest):
         for regname in ('$vl', '$vtype'):
             value = self.gdb.p(regname)
             assertNotEqual(value, 0)
-            self.gdb.p("%s=0" % regname)
+            self.gdb.p(f"{regname}=0")
             self.gdb.command("flushregs")
             assertEqual(self.gdb.p(regname), 0)
-            self.gdb.p("%s=0x%x" % (regname, value))
+            self.gdb.p(f"{regname}=0x{value:x}")
             self.gdb.command("flushregs")
             assertEqual(self.gdb.p(regname), value)
 
@@ -1715,6 +1776,37 @@ class VectorTest(GdbSingleHartTest):
         assertIn("_exit", output)
         assertEqual(self.gdb.p("status"), 0)
 
+class EbreakTest(GdbSingleHartTest):
+    """Test that we work correctly when somebody puts an ebreak directly into
+    their code."""
+    compile_args = ("programs/ebreak.c", )
+
+    def setup(self):
+        self.gdb.load()
+        self.gdb.b("_exit")
+
+    def test(self):
+        # Should hit ebreak in the code.
+        output = self.gdb.c()
+        assertIn("ebreak", output)
+        ebreak_pc = self.gdb.p("$pc")
+
+        # Simple resume, we should hit the same ebreak again.
+        output = self.gdb.c()
+        assertIn("ebreak", output)
+        assertEqual(ebreak_pc, self.gdb.p("$pc"))
+
+        # Test getting past the ebreak by changing the PC.
+        for _ in range(2):
+            self.gdb.p("$pc=$pc+4")
+            output = self.gdb.c()
+            assertIn("ebreak", output)
+            assertEqual(ebreak_pc, self.gdb.p("$pc"))
+
+        self.gdb.p("$pc=$pc+4")
+        output = self.gdb.c()
+        assertIn("_exit", output)
+
 class FreeRtosTest(GdbTest):
     def early_applicable(self):
         return self.target.freertos_binary
@@ -1723,7 +1815,7 @@ class FreeRtosTest(GdbTest):
         return True
 
     def test(self):
-        self.gdb.command("file %s" % self.target.freertos_binary)
+        self.gdb.command(f"file {self.target.freertos_binary}")
         self.gdb.load()
 
         output = self.gdb.command("monitor riscv_freertos_stacking mainline")
@@ -1732,7 +1824,7 @@ class FreeRtosTest(GdbTest):
         # through gdb. It only works when spike loads the ELF file itself.
         bp = self.gdb.b("main")
         self.gdb.c()
-        self.gdb.command("delete %d" % bp)
+        self.gdb.command(f"delete {bp}")
         self.gdb.p("*((int*) &use_htif) = 0")
         # Need this, otherwise gdb complains that there is no current active
         # thread.
@@ -1741,11 +1833,11 @@ class FreeRtosTest(GdbTest):
         bp = self.gdb.b("prvQueueReceiveTask")
 
         self.gdb.c()
-        self.gdb.command("delete %d" % bp)
+        self.gdb.command(f"delete {bp}")
 
         bp = self.gdb.b("prvQueueSendTask")
         self.gdb.c()
-        self.gdb.command("delete %d" % bp)
+        self.gdb.command(f"delete {bp}")
 
         # Now we know for sure at least 2 threads have executed.
 
@@ -1761,13 +1853,34 @@ class FreeRtosTest(GdbTest):
             assertIn("ucHeap", output)
             self.gdb.command("info reg mstatus")
             values[thread.id] = self.gdb.p("$s11")
-            self.gdb.p("$s11=0x%x" % (values[thread.id] ^ int(thread.id)))
+            self.gdb.p(f"$s11=0x{values[thread.id] ^ int(thread.id):x}")
 
         # Test that writing worked
         self.gdb.stepi()
         for thread in self.gdb.threads():
             self.gdb.thread(thread)
             assertEqual(self.gdb.p("$s11"), values[thread.id] ^ int(thread.id))
+
+class StepThread2Test(GdbTest):
+    # Check that we can do stepi on thread 2 without GDB switching to thread 1.
+    # There was a bug where this could happen, because OpenOCD was mistakenly
+    # omitting a thread ID in its stop reply.  This was addressed in OpenOCD,
+    # but if there is a regression in the future, this test should catch it)
+
+    def early_applicable(self):
+        return len(self.target.harts) > 1
+
+    def test(self):
+        output = self.gdb.command("thread 2")
+        if "Unknown thread" in output:
+            raise TestNotApplicable
+        before = self.gdb.command("thread")
+        self.gdb.stepi()
+        after = self.gdb.command("thread")
+        # make sure that single-step doesn't alter
+        # GDB's conception of the current thread
+        assertEqual(before, after)
+
 
 parsed = None
 def main():
