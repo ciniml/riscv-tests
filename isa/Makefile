@@ -38,6 +38,7 @@ RISCV_PREFIX ?= riscv$(XLEN)-unknown-elf-
 RISCV_GCC ?= $(RISCV_PREFIX)gcc
 RISCV_GCC_OPTS ?= -static -mcmodel=medany -fvisibility=hidden -nostdlib -nostartfiles
 RISCV_OBJDUMP ?= $(RISCV_PREFIX)objdump --disassemble-all --disassemble-zeroes --section=.text --section=.text.startup --section=.text.init --section=.data
+RISCV_OBJCOPY ?= $(RISCV_PREFIX)objcopy --strip-all -O binary
 RISCV_SIM ?= spike
 
 vpath %.S $(src_dir)
@@ -47,6 +48,19 @@ vpath %.S $(src_dir)
 
 %.dump: %
 	$(RISCV_OBJDUMP) $< > $@
+%.bin: %
+	$(RISCV_OBJCOPY) $< $@
+%.binhex: %.bin
+	od -An -tx4 -w4 -v $< > $@
+
+%_0.binhex: %.binhex
+	awk '{print substr($$1,7,2)}' $< > $@
+%_1.binhex: %.binhex
+	awk '{print substr($$1,5,2)}' $< > $@
+%_2.binhex: %.binhex
+	awk '{print substr($$1,3,2)}' $< > $@
+%_3.binhex: %.binhex
+	awk '{print substr($$1,1,2)}' $< > $@
 
 %.out: %
 	$(RISCV_SIM) --isa=rv64gc $< 2> $@
@@ -65,8 +79,10 @@ $$($(1)_v_tests): $(1)-v-%: $(1)/%.S
 $(1)_tests += $$($(1)_v_tests)
 
 $(1)_tests_dump = $$(addsuffix .dump, $$($(1)_tests))
+$(1)_tests_bin = $$(addsuffix .bin, $$($(1)_tests))
+$(1)_tests_binhex = $$(addsuffix .binhex, $$($(1)_tests)) $$(addsuffix _0.binhex, $$($(1)_tests)) $$(addsuffix _1.binhex, $$($(1)_tests)) $$(addsuffix _2.binhex, $$($(1)_tests)) $$(addsuffix _3.binhex, $$($(1)_tests))
 
-$(1): $$($(1)_tests_dump)
+$(1): $$($(1)_tests_dump) $$($(1)_tests_binhex)
 
 .PHONY: $(1)
 
@@ -101,18 +117,20 @@ $(eval $(call compile_template,rv64mi,-march=rv64g -mabi=lp64))
 endif
 
 tests_dump = $(addsuffix .dump, $(tests))
+tests_bin = $(addsuffix .bin, $(tests))
+tests_binhex = $(addsuffix .binhex, $(tests)) $(addsuffix _0.binhex, $(tests)) $(addsuffix _1.binhex, $(tests)) $(addsuffix _2.binhex, $(tests)) $(addsuffix _3.binhex, $(tests))
 tests_hex = $(addsuffix .hex, $(tests))
 tests_out = $(addsuffix .out, $(filter rv64%,$(tests)))
 tests32_out = $(addsuffix .out32, $(filter rv32%,$(tests)))
 
 run: $(tests_out) $(tests32_out)
 
-junk += $(tests) $(tests_dump) $(tests_hex) $(tests_out) $(tests32_out)
+junk += $(tests) $(tests_dump) $(tests_bin) $(tests_binhex) $(tests_hex) $(tests_out) $(tests32_out)
 
 #------------------------------------------------------------
 # Default
 
-all: $(tests_dump)
+all: $(tests_dump) $(tests_binhex)
 
 #------------------------------------------------------------
 # Clean up
